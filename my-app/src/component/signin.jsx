@@ -1,9 +1,10 @@
 import React, { useState } from "react";
+import Input from "./input";
+import { validateInput, validateForm } from "./formValidationsNew";
+import axios from "axios";
 import "bootstrap/dist/css/bootstrap.min.css";
-import { Button, Modal } from "react-bootstrap";
-import { userNameValidation, emailValidation, passwordValidation } from "./formValidation";
-
-const Signup = ({ setView }) => {
+ 
+const Signup = ({ setPage }) => {
   const [formData, setFormData] = useState({
     name: "",
     username: "",
@@ -12,102 +13,78 @@ const Signup = ({ setView }) => {
     confirmPassword: "",
     phone: "",
   });
-
   const [errors, setErrors] = useState({});
-  const [showModal, setShowModal] = useState(false);
-  const [userNameTitle, setUserNameTitle] = useState("");
-  const [emailError, setEmailError] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-
-  const validate = () => {
-    let errs = {};
-    const usernameRegex = /^[a-zA-Z0-9-_]{8,16}$/;
-    const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,16}$/;
-    const emailRegex = /^[\w-.]+@([\w-]+\.)+[\w-]{2,4}$/;
-    const phoneRegex = /^[6-9]\d{9}$/;
-
-    errs.username = !formData.username.match(usernameRegex) ? "Invalid username" : "";
-    errs.email = !formData.email.match(emailRegex) ? "Invalid email" : "";
-    errs.phone = !formData.phone.match(phoneRegex) ? "Invalid phone number" : "";
-    errs.password = !formData.password.match(passwordRegex) ? "Weak password" : "";
-    errs.confirmPassword = formData.password !== formData.confirmPassword ? "Passwords do not match" : "";
-
-    setErrors(errs);
-    return Object.values(errs).every((err) => err === "");
+  const [touched, setTouched] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formMessage, setFormMessage] = useState({ type: "", text: "" });
+ 
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (touched[name]) setErrors((prev) => ({ ...prev, [name]: validateInput(name, value) }));
   };
-
-  const handleSubmit = (e) => {
+ 
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    setTouched((prev) => ({ ...prev, [name]: true }));
+    setErrors((prev) => ({ ...prev, [name]: validateInput(name, value) }));
+  };
+ 
+  const handleSignup = async (e) => {
     e.preventDefault();
-    if (validate()) {
-      localStorage.setItem("user", JSON.stringify(formData));
-      setShowModal(true);
+    const newErrors = validateForm(formData);
+ 
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      setFormMessage({ type: "danger", text: "Please correct the errors before submitting." });
+      return;
+    }
+ 
+    setIsSubmitting(true);
+    try {
+      const { confirmPassword, ...signupData } = formData;
+      const response = await axios.post("http://localhost:5001/api/signin", signupData);
+      setFormMessage({ type: "success", text: response.data.message });
+      setTimeout(() => setPage("login"), 2000);
+    } catch (error) {
+      if (error.response && error.response.status === 400) {
+        setFormMessage({ type: "danger", text: error.response.data.message });
+      } else {
+        setFormMessage({ type: "danger", text: "Signup failed. Please try again!" });
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
-
-  const onChangeValues = (event) => {
-    const validValue = userNameValidation(event.target.value);
-    if (!validValue.isValid) {
-      setUserNameTitle(validValue.message);
-    } else {
-      setUserNameTitle("");
-      setFormData({ ...formData, name: event.target.value });
-    }
-  };
-
-  const onChangeEmail = (event) => {
-    const validEmail = emailValidation(event.target.value);
-    if (!validEmail.isValid) {
-      setEmailError(validEmail.message);
-    } else {
-      setEmailError("");
-      setFormData({ ...formData, email: event.target.value });
-    }
-  };
-
-  const onChangePassword = (event) => {
-    const validPassword = passwordValidation(event.target.value);
-    if (!validPassword.isValid) {
-      setPasswordError(validPassword.message);
-    } else {
-      setPasswordError("");
-      setFormData({ ...formData, password: event.target.value });
-    }
-  };
-
+ 
   return (
-    <div className="container">
-      <h2>Signup</h2>
-      <form onSubmit={handleSubmit}>
-        <input type="text" className="form-control" placeholder="Name" onChange={onChangeValues} required title={userNameTitle} />
-        <p className="text-danger">{errors.username}</p>
-
-        <input type="text" className="form-control" placeholder="Email" onChange={onChangeEmail} required title={emailError} />
-        <p className="text-danger">{errors.email}</p>
-
-        <input type="password" className="form-control" placeholder="Password" onChange={onChangePassword} required title={passwordError} />
-        <p className="text-danger">{errors.password}</p>
-
-        <input type="password" className={`form-control ${errors.confirmPassword ? "is-invalid" : ""}`} placeholder="Confirm Password" onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })} required />
-        <p className="text-danger">{errors.confirmPassword}</p>
-
-        <input type="text" className={`form-control ${errors.phone ? "is-invalid" : ""}`} placeholder="Phone" onChange={(e) => setFormData({ ...formData, phone: e.target.value })} required />
-        <p className="text-danger">{errors.phone}</p>
-
-        <Button type="submit" variant="primary">Signup</Button>
-        <Button variant="link" onClick={() => setView("login")}>Already have an account? Login</Button>
+    <div className="container" style={{ maxWidth: "400px", marginTop: "50px" }}>
+      <h2 className="mb-4 text-center">Sign Up</h2>
+      {formMessage.text && <div className={`alert alert-${formMessage.type}`} role="alert">{formMessage.text}</div>}
+      <form onSubmit={handleSignup} className="p-3 border rounded shadow bg-white">
+        {Object.keys(formData).map((key) => (
+          <div key={key} className="mb-3 position-relative">
+            <Input
+              type={key.includes("password") ? "password" : "text"}
+              name={key}
+              value={formData[key]}
+              placeholder={key.charAt(0).toUpperCase() + key.slice(1)}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              className={`form-control ${touched[key] && errors[key] ? "is-invalid" : ""}`}
+            />
+            {touched[key] && errors[key] && <div className="tooltip-error">{errors[key]}</div>}
+          </div>
+        ))}
+        <button type="submit" className="btn btn-success w-100" disabled={isSubmitting}>{isSubmitting ? "Signing Up..." : "Sign Up"}</button>
       </form>
-
-      <Modal show={showModal} onHide={() => setView("login")}>
-        <Modal.Header closeButton>
-          <Modal.Title>Signup Successful</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>You have successfully signed up!</Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setView("login")}>Close</Button>
-        </Modal.Footer>
-      </Modal>
+      <p className="mt-3 text-center">
+        Already have an account? <button className="btn btn-link p-0 align-baseline" onClick={() => setPage("login")}>
+          Login
+        </button>
+      </p>
     </div>
   );
 };
-
+ 
 export default Signup;
